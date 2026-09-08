@@ -39,11 +39,6 @@ if (!USERNAME) {
   console.error("Missing GH_USERNAME env var");
   process.exit(1);
 }
-if (!TOKEN) {
-  console.error("Missing GH_TOKEN / GITHUB_TOKEN env var");
-  process.exit(1);
-}
-
 const QUERY = `
   query($login: String!) {
     user(login: $login) {
@@ -63,6 +58,8 @@ const QUERY = `
 `;
 
 async function fetchWeeks() {
+  if (!TOKEN) return fetchPublicWeeks();
+
   const res = await fetch("https://api.github.com/graphql", {
     method: "POST",
     headers: {
@@ -77,6 +74,41 @@ async function fetchWeeks() {
   const json = await res.json();
   if (json.errors) throw new Error(JSON.stringify(json.errors));
   return json.data.user.contributionsCollection.contributionCalendar.weeks;
+}
+
+async function fetchPublicWeeks() {
+  const to = new Date().toISOString().slice(0, 10);
+  const res = await fetch(`https://github.com/users/${USERNAME}/contributions?to=${to}`);
+  if (!res.ok) {
+    throw new Error(`GitHub contribution calendar error ${res.status}: ${await res.text()}`);
+  }
+
+  const html = await res.text();
+  const colors = ["#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"];
+  const days = [...html.matchAll(/data-date="([^"]+)"[^>]*data-level="([0-4])"/g)]
+    .map((match) => ({
+      date: match[1],
+      contributionCount: Number(match[2]),
+      color: colors[Number(match[2])],
+    }));
+
+  if (!days.length) throw new Error("No contribution days found in GitHub calendar");
+
+  const weeks = [];
+  for (const day of days) {
+    const date = new Date(`${day.date}T00:00:00Z`);
+    const weekStart = new Date(date);
+    weekStart.setUTCDate(date.getUTCDate() - date.getUTCDay());
+    const key = weekStart.toISOString().slice(0, 10);
+    let week = weeks.find((entry) => entry.key === key);
+    if (!week) {
+      week = { key, contributionDays: [] };
+      weeks.push(week);
+    }
+    week.contributionDays.push(day);
+  }
+
+  return weeks.map(({ contributionDays }) => ({ contributionDays }));
 }
 
 function buildCells(weeks) {
