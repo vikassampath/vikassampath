@@ -24,7 +24,7 @@ jobs:
       - name: Regenerate contribution map
         run: npm run generate
         env:
-          GH_USERNAME: beingvicky
+          GH_USERNAME: vikassampath
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Commit updated map
